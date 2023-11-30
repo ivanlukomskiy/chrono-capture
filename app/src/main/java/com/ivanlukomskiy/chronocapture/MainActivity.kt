@@ -64,6 +64,7 @@ fun AppNavigation(context: Context) {
 fun EditTelegramTokenScreen(context: Context, navController: NavController) {
     val sharedPreferences = context.getSharedPreferences("AppPreferences", Context.MODE_PRIVATE)
     var token by remember { mutableStateOf(sharedPreferences.getString("tgToken", "") ?: "") }
+    var channel by remember { mutableStateOf(sharedPreferences.getString("tgChannel", "") ?: "") }
 
     Column(
         modifier = Modifier
@@ -77,20 +78,28 @@ fun EditTelegramTokenScreen(context: Context, navController: NavController) {
             onValueChange = { token = it },
             label = { Text("Telegram Token") }
         )
+        TextField(
+            value = channel,
+            onValueChange = { channel = it },
+            label = { Text("Channel ID") }
+        )
         Spacer(modifier = Modifier.height(16.dp))
-        Row {
-            Button(onClick = {
-                sharedPreferences.edit().putString("tgToken", "").apply()
-                token = ""
-            }) {
-                Text("Clear")
-            }
-            Button(onClick = {
-                sharedPreferences.edit().putString("tgToken", token).apply()
-                navController.popBackStack()
-            }) {
-                Text("Save")
-            }
+
+        Button(onClick = {
+            navController.popBackStack()
+        }) {
+            Text("Cancel")
+        }
+        Button(onClick = {
+            sharedPreferences.edit().putString("tgToken", token).apply()
+            navController.popBackStack()
+        }) {
+            Text("Save")
+        }
+        Button(onClick = {
+
+        }) {
+            Text("Test send message")
         }
     }
 }
@@ -99,20 +108,21 @@ fun EditTelegramTokenScreen(context: Context, navController: NavController) {
 fun Greeting(context: Context, navController: NavController, modifier: Modifier = Modifier) {
     var showError by remember { mutableStateOf(false) }
 
-    Column(modifier = modifier) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
         Text(text = "Take photo each day at 14:00")
+        Spacer(modifier = Modifier.height(16.dp))
         MyTimePicker()
 
         Button(onClick = {
             navController.navigate("editTelegramToken")
         }) {
             Text("Edit telegram token")
-        }
-
-        Button(onClick = {
-
-        }) {
-            Text("Test send message")
         }
 
         if (showError) {
