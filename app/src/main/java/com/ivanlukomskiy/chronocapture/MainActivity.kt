@@ -31,7 +31,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.ivanlukomskiy.chronocapture.ui.theme.ChronoCaptureTheme
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.*
+import kotlinx.coroutines.*
 
 class MainActivity : ComponentActivity() {
 
@@ -57,6 +60,27 @@ fun AppNavigation(context: Context) {
     NavHost(navController = navController, startDestination = "main") {
         composable("main") { Greeting(context, navController) }
         composable("editTelegramToken") { EditTelegramTokenScreen(context, navController) }
+    }
+}
+
+fun sendMessageToTelegramChannel(botToken: String, channelId: String, message: String) {
+    val urlString = "https://api.telegram.org/bot$botToken/sendMessage?chat_id=$channelId&text=${java.net.URLEncoder.encode(message, "UTF-8")}"
+
+    try {
+        val url = URL(urlString)
+        with(url.openConnection() as HttpURLConnection) {
+            requestMethod = "GET" // Telegram Bot API uses GET for sending messages
+
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                // The message was sent successfully
+                println("Message sent to Telegram channel successfully.")
+            } else {
+                // There was an error sending the message
+                println("Failed to send message. Response Code: $responseCode")
+            }
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
     }
 }
 
@@ -92,12 +116,20 @@ fun EditTelegramTokenScreen(context: Context, navController: NavController) {
         }
         Button(onClick = {
             sharedPreferences.edit().putString("tgToken", token).apply()
+            sharedPreferences.edit().putString("tgChannel", channel).apply()
             navController.popBackStack()
         }) {
             Text("Save")
         }
         Button(onClick = {
-
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    sendMessageToTelegramChannel(token, channel, "it worked!")
+                } catch (e: Exception) {
+                    println("FAILED")
+                    // Handle exception
+                }
+            }
         }) {
             Text("Test send message")
         }
