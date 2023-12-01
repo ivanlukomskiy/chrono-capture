@@ -2,10 +2,14 @@
 
 package com.ivanlukomskiy.chronocapture
 
+import android.Manifest
+import android.app.Activity
 import android.app.TimePickerDialog
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.camera.core.CameraSelector
@@ -39,26 +43,20 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.ivanlukomskiy.chronocapture.ui.theme.ChronoCaptureTheme
 import kotlinx.coroutines.*
+import java.io.DataOutputStream
 import java.io.File
+import java.io.FileInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.random.Random
-import android.Manifest
-import android.app.Activity
-import android.os.Build
-import androidx.annotation.RequiresApi
-import java.io.DataOutputStream
-import java.io.FileInputStream
-import java.io.IOException
-import java.nio.file.Files
-import java.nio.file.Paths
 
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContent {
             ChronoCaptureTheme {
                 Surface(
@@ -75,43 +73,20 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppNavigation(context: Context) {
     val navController = rememberNavController()
-
     NavHost(navController = navController, startDestination = "main") {
-        composable("main") { Greeting(context, navController) }
-        composable("editTelegramToken") { EditTelegramTokenScreen(context, navController) }
-    }
-}
-
-fun sendMessageToTelegramChannel(botToken: String, channelId: String, message: String) {
-    val urlString = "https://api.telegram.org/bot$botToken/sendMessage?chat_id=$channelId&text=${
-        java.net.URLEncoder.encode(
-            message,
-            "UTF-8"
-        )
-    }"
-
-    try {
-        val url = URL(urlString)
-        with(url.openConnection() as HttpURLConnection) {
-            requestMethod = "GET" // Telegram Bot API uses GET for sending messages
-
-            if (responseCode == HttpURLConnection.HTTP_OK) {
-                // The message was sent successfully
-                println("Message sent to Telegram channel successfully.")
-            } else {
-                // There was an error sending the message
-                println("Failed to send message. Response Code: $responseCode")
-            }
-        }
-    } catch (e: Exception) {
-        e.printStackTrace()
+        composable("main") { MainScreen(context, navController) }
+        composable("settings") { SettingsScreen(context, navController) }
     }
 }
 
 fun takePhoto(context: Context, outputDirectory: File, onPhotoTaken: (File) -> Unit) {
     val activity = context as Activity
     val request = Random.nextInt()
-    if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+    if (ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.CAMERA
+        ) != PackageManager.PERMISSION_GRANTED
+    ) {
         println("No permissions granted, asking...")
         ActivityCompat.requestPermissions(activity, arrayOf(Manifest.permission.CAMERA), request)
         return
@@ -165,7 +140,12 @@ fun takePhoto(context: Context, outputDirectory: File, onPhotoTaken: (File) -> U
     }, ContextCompat.getMainExecutor(context))
 }
 
-fun sendImageToTelegramChannel(botToken: String, channelId: String, imagePath: String) {
+fun sendImageToTelegramChannel(
+    context: Context,
+    botToken: String,
+    channelId: String,
+    imagePath: String
+) {
     val lineEnd = "\r\n"
     val twoHyphens = "--"
     val boundary = "*****${System.currentTimeMillis()}*****"
@@ -180,7 +160,10 @@ fun sendImageToTelegramChannel(botToken: String, channelId: String, imagePath: S
         httpURLConnection.useCaches = false
         httpURLConnection.requestMethod = "POST"
         httpURLConnection.setRequestProperty("Connection", "Keep-Alive")
-        httpURLConnection.setRequestProperty("Content-Type", "multipart/form-data;boundary=$boundary")
+        httpURLConnection.setRequestProperty(
+            "Content-Type",
+            "multipart/form-data;boundary=$boundary"
+        )
 
         val outputStream = DataOutputStream(httpURLConnection.outputStream)
 
@@ -209,7 +192,6 @@ fun sendImageToTelegramChannel(botToken: String, channelId: String, imagePath: S
         outputStream.flush()
         outputStream.close()
 
-        // Read response
         val responseStream = if (httpURLConnection.responseCode == HttpURLConnection.HTTP_OK) {
             httpURLConnection.inputStream
         } else {
@@ -220,20 +202,36 @@ fun sendImageToTelegramChannel(botToken: String, channelId: String, imagePath: S
             val response = it.readText()
             println("Response: $response")
         }
-
+        onInfo(context, "Image sent")
     } catch (e: Exception) {
+        onError(context, "Failed to send an image")
         e.printStackTrace()
     } finally {
         httpURLConnection?.disconnect()
     }
 }
 
+fun onInfo(context: Context, text: String) {
+    val activity = context as Activity
+    activity.runOnUiThread {
+        Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
+    }
+}
+
+fun onError(context: Context, text: String) {
+    val activity = context as Activity
+    activity.runOnUiThread {
+        Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
+    }
+}
+
 
 @Composable
-fun EditTelegramTokenScreen(context: Context, navController: NavController) {
+fun SettingsScreen(context: Context, navController: NavController) {
     val sharedPreferences = context.getSharedPreferences("AppPreferences", Context.MODE_PRIVATE)
     var token by remember { mutableStateOf(sharedPreferences.getString("tgToken", "") ?: "") }
     var channel by remember { mutableStateOf(sharedPreferences.getString("tgChannel", "") ?: "") }
+    var time by remember { mutableStateOf(sharedPreferences.getString("time", "12:00") ?: "12:00") }
 
     Column(
         modifier = Modifier
@@ -262,31 +260,40 @@ fun EditTelegramTokenScreen(context: Context, navController: NavController) {
         Button(onClick = {
             sharedPreferences.edit().putString("tgToken", token).apply()
             sharedPreferences.edit().putString("tgChannel", channel).apply()
+            sharedPreferences.edit().putString("time", time).apply()
             navController.popBackStack()
         }) {
             Text("Save")
         }
         Button(onClick = {
+            val calendar = Calendar.getInstance()
+            val hour = calendar.get(Calendar.HOUR_OF_DAY)
+            val minute = calendar.get(Calendar.MINUTE)
+
+            val timePickerDialog = TimePickerDialog(
+                context,
+                { _, selectedHour, selectedMinute ->
+                    time = "$selectedHour:$selectedMinute"
+                }, hour, minute, true
+            )
+            timePickerDialog.show()
+        }) {
+            Text("Edit time")
+        }
+        Button(onClick = {
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-//                    sendMessageToTelegramChannel(token, channel, "it worked!")
-
-
-
                     withContext(Dispatchers.IO) {
-//                        val photoFile = File.createTempFile("photo_", ".jpg", context.cacheDir)
                         takePhoto(context, context.cacheDir) {
                             println("image taken, sending $it")
                             CoroutineScope(Dispatchers.IO).launch {
-                                sendImageToTelegramChannel(token, channel, it.absolutePath)
+                                sendImageToTelegramChannel(context, token, channel, it.absolutePath)
                             }
                         }
                     }
-
-
                 } catch (e: Exception) {
-                    println("FAILED")
-                    // Handle exception
+                    onError(context, "Failed to take an image")
+                    e.printStackTrace()
                 }
             }
         }) {
@@ -296,8 +303,10 @@ fun EditTelegramTokenScreen(context: Context, navController: NavController) {
 }
 
 @Composable
-fun Greeting(context: Context, navController: NavController, modifier: Modifier = Modifier) {
-    var showError by remember { mutableStateOf(false) }
+fun MainScreen(context: Context, navController: NavController, modifier: Modifier = Modifier) {
+    val sharedPreferences = context.getSharedPreferences("AppPreferences", Context.MODE_PRIVATE)
+    val showError by remember { mutableStateOf(false) }
+    val time by remember { mutableStateOf(sharedPreferences.getString("time", "12:00") ?: "12:00") }
 
     Column(
         modifier = Modifier
@@ -306,43 +315,19 @@ fun Greeting(context: Context, navController: NavController, modifier: Modifier 
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(text = "Take photo each day at 14:00")
+        Text(text = "Take photo each day at $time")
         Spacer(modifier = Modifier.height(16.dp))
-        MyTimePicker()
-
         Button(onClick = {
-            navController.navigate("editTelegramToken")
+            navController.navigate("settings")
         }) {
-            Text("Edit telegram token")
+            Text("Settings")
         }
-
         if (showError) {
             Text("Invalid cron expression", color = Color.Red)
         }
     }
 }
 
-@Composable
-fun MyTimePicker() {
-    val context = LocalContext.current
-    var time by remember { mutableStateOf("") }
-
-    Button(onClick = {
-        val calendar = Calendar.getInstance()
-        val hour = calendar.get(Calendar.HOUR_OF_DAY)
-        val minute = calendar.get(Calendar.MINUTE)
-
-        val timePickerDialog = TimePickerDialog(
-            context,
-            { _, selectedHour, selectedMinute ->
-                time = "$selectedHour:$selectedMinute"
-            }, hour, minute, true
-        )
-        timePickerDialog.show()
-    }) {
-        Text("Edit time")
-    }
-}
 
 //@Preview(showBackground = true)
 //@Composable
