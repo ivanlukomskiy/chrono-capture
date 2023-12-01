@@ -22,7 +22,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -127,15 +130,14 @@ fun takePhoto(context: Context, outputDirectory: File, onPhotoTaken: (File) -> U
                         println("Image saved! $photoFile")
                         onPhotoTaken(photoFile)
                     }
-
                     override fun onError(exc: ImageCaptureException) {
+                        onError(context, "Failed to save image")
                         println("Image not saved( $exc")
                         exc.printStackTrace()
-                        // Handle error
                     }
                 })
         } catch (exc: Exception) {
-            // Handle error
+            onError(context, "Failed to take image")
         }
     }, ContextCompat.getMainExecutor(context))
 }
@@ -198,11 +200,16 @@ fun sendImageToTelegramChannel(
             httpURLConnection.errorStream
         }
 
+        if (httpURLConnection.responseCode != HttpURLConnection.HTTP_OK) {
+            onError(context, "Server responded with code ${httpURLConnection.responseCode}")
+        } else {
+            onInfo(context, "Image sent")
+        }
+
         responseStream.bufferedReader().use {
             val response = it.readText()
             println("Response: $response")
         }
-        onInfo(context, "Image sent")
     } catch (e: Exception) {
         onError(context, "Failed to send an image")
         e.printStackTrace()
@@ -232,6 +239,8 @@ fun SettingsScreen(context: Context, navController: NavController) {
     var token by remember { mutableStateOf(sharedPreferences.getString("tgToken", "") ?: "") }
     var channel by remember { mutableStateOf(sharedPreferences.getString("tgChannel", "") ?: "") }
     var time by remember { mutableStateOf(sharedPreferences.getString("time", "12:00") ?: "12:00") }
+
+    var isLoading by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -278,9 +287,10 @@ fun SettingsScreen(context: Context, navController: NavController) {
             )
             timePickerDialog.show()
         }) {
-            Text("Edit time")
+            Text(time)
         }
         Button(onClick = {
+            isLoading = true
             CoroutineScope(Dispatchers.IO).launch {
                 try {
                     withContext(Dispatchers.IO) {
@@ -296,8 +306,18 @@ fun SettingsScreen(context: Context, navController: NavController) {
                     e.printStackTrace()
                 }
             }
-        }) {
-            Text("Test send message")
+        }, enabled=isLoading) {
+            if (isLoading) {
+                CircularProgressIndicator(
+                    color = MaterialTheme.colorScheme.primary,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Sending...")
+            } else {
+                Text("Test send message")
+            }
         }
     }
 }
