@@ -22,3 +22,5 @@ Open app settings tab and fill in:
 Hang the phone somewhere and click "start".
 
 Now it will take pictures and send the image to the telegram channel!
+
+Don't turn off the screen of smartphone, otherwise it won't have access to camera. The app will prevent it from turning off by timeout.
