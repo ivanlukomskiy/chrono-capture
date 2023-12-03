@@ -17,7 +17,7 @@ Open app settings tab and fill in:
 - telegram channelId
 - set the time when you want images to be sent
 - optionally, add an invite link so it will show a QR code to join the channel while running
-- confirm that it works by clicking on "send test message".
+- Click "send test message". You will need to grant camera permissions
 
 Hang the phone somewhere and click "start".
 
